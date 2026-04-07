@@ -1,0 +1,302 @@
+###############################################################################
+# Knowledge Assistant Agentic RAG - Test Queries
+# 
+# This file contains test HTTP requests for the Knowledge Assistant API
+# Use the REST Client extension in VS Code to execute these requests
+#
+# Endpoints:
+#   - POST /api/chat/query     - Agentic RAG with workflow orchestration
+#   - POST /api/chat           - Simple RAG chat
+#   - GET  /api/chat/conversations/{user_id} - List conversations
+###############################################################################
+
+@baseUrl = http://localhost:8000
+@userId = test-user-123
+@sessionId = 550e8400-e29b-41d4-a716-446655440000
+
+###############################################################################
+# Bullhorn Registration Process Queries
+###############################################################################
+
+### 1. Talent Bullhorn Registration Timing
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "At what point in the process will the Talent receive their Bullhorn registration?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 2. ESF Stage Change Notifications
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "Will a seller receive an email when the ESF changes stages?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+###############################################################################
+# ORG Creation and Management
+###############################################################################
+
+### 3. Correct PS Usage for ORG Creation
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "How do I know if I am using the correct PS when creating an ORG?",
+  "user_id": "{{userId}}"
+}
+
+### 4. Adding Export Controls to ORG
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "Export Controls is missing from an ORG, how do I add export control?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 5. Deleting Files from ORG
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "How to delete a file on an ORG?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+###############################################################################
+# CRG Usage by Role
+###############################################################################
+
+### 6. Aerotec Background ORG - CRG Usage
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "I am an Aerotec Background ORG member, what is a CRG and how do I use it?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 7. TEKsystems Background Team - CRG Usage
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "I am a TEKsystems Background Team member, what is a CRG and how do I use it?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 8. Aerotec FSO Owner - CRG Usage
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "I am an Aerotec FSO owner, what is a CRG and how do I use it?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 9. TEKsystems FSO Member - CRG Usage
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "I am a TEKsystems FSO member, what is a CRG and how do I use it?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 10. Aerotec Producer - CRG Usage
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "I am an Aerotec producer, what is a CRG and how do I use it?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 11. TEKsystems Seller - CRG Usage
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "I am a TEKsystems seller, what is a CRG and how do I use it?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+###############################################################################
+# Academy and Document Management
+###############################################################################
+
+### 12. Missing Background Document in Academy
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "I work for Academy, what do I do if a background document is missing?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 13. Form Naming in Bullhorn
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "How do we name forms in Bullhorn?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 14. Form Setup Issues
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "Bullhorn says the forms is not setup yet, what do I do?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+###############################################################################
+# Credential Logic and Packages
+###############################################################################
+
+### 15. Understanding Credential Logic
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "What is credential logic?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 16. TEKsystems Automatic Bullhorn Packages
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "What Bullhorn packages are automatic for TEKsystems?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+###############################################################################
+# Form Completion and Troubleshooting
+###############################################################################
+
+### 17. Candidate Form Completion Issues
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "The candidate is having problems completing forms in Bullhorn, how do I help them?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 18. Auto-Filled Form Fields
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "Why are some of the fields auto filled on the forms?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+###############################################################################
+# Connected Platform
+###############################################################################
+
+### 19. Creating Core CRG in Connected
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "How do I create a core CRG in Connected?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 20. Talent Email Update After Registration
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "How can my Talent update their email address after completing registration and paperwork?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+### 21. ESF Connection Notification
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "What do I do when I am notified on an ESF connection to complete?",
+  "session_id": "{{sessionId}}",
+  "user_id": "{{userId}}"
+}
+
+###############################################################################
+# Additional Test Queries - Simple RAG Endpoint
+###############################################################################
+
+### 22. Simple RAG - Bullhorn Registration (No workflow)
+POST {{baseUrl}}/api/chat
+Content-Type: application/json
+
+{
+  "query": "How do I know if I am using the correct PS when creating an ORG?",
+  "user_id": "{{userId}}"
+}
+
+###############################################################################
+# Conversation Management
+###############################################################################
+
+### 23. List All User Conversations
+GET {{baseUrl}}/api/chat/conversations/{{userId}}
+
+### 24. Health Check
+GET {{baseUrl}}/api/health
+
+###############################################################################
+# Multi-turn Conversation Test
+###############################################################################
+
+### 25. First Query - Establish Context
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "What is a CRG?",
+  "user_id": "multi-turn-user",
+  "session_id": "session-abc123"
+}
+
+### 26. Follow-up Query - Use Session Context
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "query": "What does it do?",
+  "user_id": "multi-turn-user",
+  "session_id": "session-abc123"
+}
+
+### 27. Retrieve Conversation History
+GET {{baseUrl}}/api/chat/conversations/multi-turn-user/session-abc123
