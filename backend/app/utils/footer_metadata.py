@@ -10,9 +10,8 @@ def find_blob_by_filename(connection_string: str, container_name: str, filename:
     """
     container = ContainerClient.from_connection_string(connection_string, container_name)
     for blob in container.list_blobs():
-        actual_name = blob.name.split("/")[-1]
-        if actual_name == filename:
-            return blob.name  # full path (including folders)
+        if blob.name.endswith("/" + filename) or blob.name == filename:
+            return blob.name
     return None
 from fastapi import APIRouter
 from typing import Dict, List, Any
@@ -27,11 +26,13 @@ router = APIRouter()
 # =========================
 # CONFIG
 # =========================
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get("BLOBSTORAGE_CONNECTION_STRING", "")
+AZURE_STORAGE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=saocm20obedev001;AccountKey=tPuIekoPR/H5VK++7dtJ4MnIkmb2M46j47vEA8ooT91ixadSuE5V1PSpfn2zH0kByBBglkYXh8+++ASt3pnjwA==;EndpointSuffix=core.windows.net"
 CONTAINER_NAME = ""  # dynamic from skillset
 
-DOC_INTELLIGENCE_ENDPOINT = os.environ.get("AISERVICES_COGNITIVE_SERVICES_ENDPOINT", "")
-DOC_INTELLIGENCE_KEY = os.environ.get("AISERVICES_COGNITIVE_SERVICES_KEY", "")
+CONTAINER_NAME = ""  # dynamic from skillset
+
+DOC_INTELLIGENCE_ENDPOINT = "https://ais-ocm20-obe-dev-001.cognitiveservices.azure.com/"
+DOC_INTELLIGENCE_KEY = "3D5frJJMSDniR21q5dtm7V5mtu0Zlwhp3pIWw1vqp5b2Y8j6CPYGJQQJ99CBACHYHv6XJ3w3AAAEACOGKBNk"
 
 
 # =========================
@@ -54,7 +55,7 @@ def download_blob(file_name: str, container_name: str) -> bytes:
 # STEP 2: OCR (FIRST 4 PAGES)
 # =========================
 def run_ocr(file_bytes: str) -> str:
-    url = f"{DOC_INTELLIGENCE_ENDPOINT}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31&pages=1-4"
+    url = f"{DOC_INTELLIGENCE_ENDPOINT}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31&pages=1-2"
 
     headers = {
         "Ocp-Apim-Subscription-Key": DOC_INTELLIGENCE_KEY,
@@ -80,7 +81,7 @@ def run_ocr(file_bytes: str) -> str:
         elif result_json["status"] == "failed":
             raise Exception("OCR failed")
 
-        time.sleep(2)
+        time.sleep(0.5)
 
     text = ""
     for page in result_json["analyzeResult"]["pages"]:
@@ -170,10 +171,10 @@ def process_document(file_name: str, container_name: str) -> Dict[str, Any]:
     print(f"📥 Downloading: {file_name} from {container_name}")
     file_bytes = download_blob(file_name, container_name)
 
-    print("🔍 Running OCR...")
+    print("🔍 Running OCR (pages 1-2)...")
     text = run_ocr(file_bytes)
 
-    print("🧠 Extracting OPCO + Persona from FULL TEXT...")
+    print("🧠 Extracting OPCO + Persona from text...")
 
     opcos = extract_footer_values(text, "Operating Companies")
     personas = (
@@ -269,14 +270,27 @@ async def footer_metadata_endpoint(payload: dict):
         print("📄 FILE:", file_name)
         print("📦 CONTAINER:", container_name)
 
-        try:
-            data = process_document(file_name, container_name)
-        except Exception as e:
+        # Resolve full blob path to check folder structure
+        full_path = find_blob_by_filename(AZURE_STORAGE_CONNECTION_STRING, container_name, file_name)
+        print(f"📂 FULL PATH: {full_path}")
+
+        if not full_path or "a3 degreed" not in full_path.lower():
+            print(f"⏭️ Skipping (not in A3 Degreed folder): {full_path or file_name}")
             data = {
-                "error": str(e),
+                "opco_values_array": [],
+                "persona_values_array": [],
                 "isValid": False,
-                "executed": False
+                "executed": True
             }
+        else:
+            try:
+                data = process_document(file_name, container_name)
+            except Exception as e:
+                data = {
+                    "error": str(e),
+                    "isValid": False,
+                    "executed": False
+                }
 
         results.append({
             "recordId": item["recordId"],
