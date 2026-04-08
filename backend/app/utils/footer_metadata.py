@@ -26,10 +26,9 @@ router = APIRouter()
 # =========================
 # CONFIG
 # =========================
-AZURE_STORAGE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=saocm20obedev001;AccountKey=tPuIekoPR/H5VK++7dtJ4MnIkmb2M46j47vEA8ooT91ixadSuE5V1PSpfn2zH0kByBBglkYXh8+++ASt3pnjwA==;EndpointSuffix=core.windows.net"
+AZURE_STORAGE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=sthubdevaioc273154123411;AccountKey=78yGd8mCAuABzNuO16o3hXF5ZiVIeMfwVgBRRFpQxMJvc9jXAb/87WpnvZSSxPTEdn8gQqSrqOqr+AStdEfWMw==;EndpointSuffix=core.windows.net"
 CONTAINER_NAME = ""  # dynamic from skillset
 
-CONTAINER_NAME = ""  # dynamic from skillset
 
 DOC_INTELLIGENCE_ENDPOINT = "https://ais-ocm20-obe-dev-001.cognitiveservices.azure.com/"
 DOC_INTELLIGENCE_KEY = "3D5frJJMSDniR21q5dtm7V5mtu0Zlwhp3pIWw1vqp5b2Y8j6CPYGJQQJ99CBACHYHv6XJ3w3AAAEACOGKBNk"
