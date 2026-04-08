@@ -276,8 +276,8 @@ async def footer_metadata_endpoint(payload: dict):
         if not full_path or "a3 degreed" not in full_path.lower():
             print(f"⏭️ Skipping (not in A3 Degreed folder): {full_path or file_name}")
             data = {
-                "opco_values_array": [],
-                "persona_values_array": [],
+                "opco_values_array": None,
+                "persona_values_array": None,
                 "isValid": False,
                 "executed": True
             }
