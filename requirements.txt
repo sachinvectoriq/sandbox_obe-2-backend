@@ -31,7 +31,7 @@ opentelemetry-semantic-conventions-ai==0.4.13
 # Retry Logic
 tenacity>=8.2.0
 dependency-injector==4.48.3
-
+httpx
 
 #SAML
 python3-saml==1.16.0
