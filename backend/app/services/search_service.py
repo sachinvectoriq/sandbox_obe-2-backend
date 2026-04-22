@@ -415,30 +415,28 @@ class SearchService(ISearchService):
             if "document_type" in filters:
                 doc_types = filters["document_type"]
                 if isinstance(doc_types, list):
-                    if doc_types:
-                        type_filters = " or ".join(
-                            f"metadata/documentType eq '{dt}'" for dt in doc_types
-                        )
-                        filter_parts.append(f"({type_filters})")
-                elif doc_types:
+                    type_filters = " or ".join(
+                        f"metadata/documentType eq '{dt}'" for dt in doc_types
+                    )
+                    filter_parts.append(f"({type_filters})")
+                else:
                     filter_parts.append(f"metadata/documentType eq '{doc_types}'")
             
             # Category filtering
             if "category" in filters:
                 categories = filters["category"]
                 if isinstance(categories, list):
-                    if categories:
-                        category_filters = " or ".join(
-                            f"metadata/category eq '{cat}'" for cat in categories
-                        )
-                        filter_parts.append(f"({category_filters})")
-                elif categories:
+                    category_filters = " or ".join(
+                        f"metadata/category eq '{cat}'" for cat in categories
+                    )
+                    filter_parts.append(f"({category_filters})")
+                else:
                     filter_parts.append(f"metadata/category eq '{categories}'")
             
             # Operating company filtering (collection field)
             if "opco_values" in filters:
                 opco_values = filters["opco_values"]
-                if isinstance(opco_values, list) and opco_values:
+                if isinstance(opco_values, list):
                     opco_conditions = " or ".join(
                         f"opco_values/any(o: o eq '{value}')" for value in opco_values
                     )
@@ -447,7 +445,7 @@ class SearchService(ISearchService):
             # Persona filtering (collection field)
             if "persona_values" in filters:
                 persona_values = filters["persona_values"]
-                if isinstance(persona_values, list) and persona_values:
+                if isinstance(persona_values, list):
                     persona_conditions = " or ".join(
                         f"persona_values/any(p: p eq '{value}')" for value in persona_values
                     )
