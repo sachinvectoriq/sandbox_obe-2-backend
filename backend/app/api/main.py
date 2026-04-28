@@ -16,7 +16,7 @@ from app.api.routes import chat, health, pipeline
 from app.utils import audit
 from app.utils import feedback
 # SAML SSO disabled for QA/non-prod build
-# from app.utils import saml
+from app.utils import saml
 from app.utils import report
 from app.utils import report_access
 from app.utils.footer_metadata import router as footer_router
@@ -140,7 +140,7 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/api")
     app.include_router(feedback.router, prefix="/api")
     # SAML SSO disabled for QA/non-prod build
-    # app.include_router(saml.router)
+    app.include_router(saml.router)
     app.include_router(report.router, prefix="/api")
     app.include_router(report_access.router, prefix="/api")
     app.include_router(footer_router, prefix="/api")
