@@ -11,10 +11,12 @@ that would naturally continue the conversation. Return ONLY valid JSON in the fo
 }}
 
 Rules:
-- Each generated question MUST be phrased in such a way that it is directly answerable using only the provided Context Chunks.
+- Generate only simple, single-intent factual questions that can be directly answered from a specific part of the Context Chunks (avoid multi-step, process-based, comparative, or reasoning-heavy questions).
+- Each generated question MUST be directly answerable using only explicit information present in the Context Chunks. Do not use or depend on the generated answer for forming questions.
+- Make each question directly grounded in explicit information present in the Context Chunks (not inferred from the answer).
 - Do not repeat the original question.
 - Do not ask for clarification or rephrase the original question.
-- Make each question unique and relevant to the answer and context.
+- Ensure each question is unique and strictly tied to explicit content in the chunks (no external knowledge or inference).
 - Output only the JSON object, nothing else.
 
 ===
