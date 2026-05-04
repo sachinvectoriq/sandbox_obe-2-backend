@@ -1,4 +1,30 @@
-FOLLOWUP_QUESTIONS_PROMPT = """You are an assistant that generates follow-up questions to help users explore a topic further. Given the answer and the context chunks used to generate it, create 3 relevant, non-redundant follow-up questions that would naturally continue the conversation. Return ONLY valid JSON in the following format:\n\n{{\n  \"follow_up_questions\": [\n    \"First follow-up question?\",\n    \"Second follow-up question?\",\n    \"Third follow-up question?\"\n  ]\n}}\n\nRules:\n- Do not repeat the original question.\n- Do not ask for clarification or rephrase the original question.\n- Make each question unique and relevant to the answer and context.\n- Output only the JSON object, nothing else.\n\n===\n\nAnswer:\n{answer}\n\nContext Chunks:\n{context}\n"""
+FOLLOWUP_QUESTIONS_PROMPT = """You are an assistant that generates follow-up questions to help users explore a topic further.
+Given the answer and the context chunks used to generate it, create 3 relevant, non-redundant follow-up questions
+that would naturally continue the conversation. Return ONLY valid JSON in the following format:
+
+{{
+  "follow_up_questions": [
+    "First follow-up question?",
+    "Second follow-up question?",
+    "Third follow-up question?"
+  ]
+}}
+
+Rules:
+- Each generated question MUST be phrased in such a way that it is directly answerable using only the provided Context Chunks.
+- Do not repeat the original question.
+- Do not ask for clarification or rephrase the original question.
+- Make each question unique and relevant to the answer and context.
+- Output only the JSON object, nothing else.
+
+===
+
+Answer:
+{answer}
+
+Context Chunks:
+{context}
+"""
 
 """
 Prompt templates for agents and workflow stages.
