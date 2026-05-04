@@ -846,7 +846,7 @@ class ChatService(IChatService):
             followup_completion = await client.chat.completions.create(
                 model=self._openai_options.chat_completion_model,
                 messages=cast(Iterable[ChatCompletionMessageParam], followup_messages),
-                temperature=0.7,
+                temperature=0,
                 max_completion_tokens=256,
             )
             import json as _json
