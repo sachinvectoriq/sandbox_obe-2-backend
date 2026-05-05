@@ -1,5 +1,5 @@
 FOLLOWUP_QUESTIONS_PROMPT = """You are an assistant that generates follow-up questions to help users explore a topic further.
-Given the answer and the context chunks used to generate it, create 3 relevant, non-redundant follow-up questions
+Given the answer and the context chunks used to generate it, create 3 question which can be directly answered from the chunks, non-redundant follow-up questions
 that would naturally continue the conversation. Return ONLY valid JSON in the following format:
 
 {{
@@ -10,14 +10,12 @@ that would naturally continue the conversation. Return ONLY valid JSON in the fo
   ]
 }}
 
-Rules:
-- Generate only simple, single-intent factual questions that can be directly answered from a specific part of the Context Chunks (avoid multi-step, process-based, comparative, or reasoning-heavy questions).
-- Each generated question MUST be directly answerable using only explicit information present in the Context Chunks. Do not use or depend on the generated answer for forming questions.
-- Make each question directly grounded in explicit information present in the Context Chunks (not inferred from the answer).
-- Do not repeat the original question.
-- Do not ask for clarification or rephrase the original question.
-- Ensure each question is unique and strictly tied to explicit content in the chunks (no external knowledge or inference).
-- Output only the JSON object, nothing else.
+STRICT REQUIREMENT:
+- Each question MUST be directly answerable from the context chunks.
+- The answer MUST exist explicitly in a single context chunk.
+- Before generating a question, internally verify that you can point to the exact sentence in the chunk that answers it.
+- If you cannot find an exact answer in the chunks, DO NOT generate that question.
+- Keep questions clear and natural (15–25 words).
 
 ===
 
