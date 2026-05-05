@@ -407,15 +407,14 @@ If the topic is not discussed, respond exactly with:
 ## CITATION INSTRUCTIONS:
 - Citations are MANDATORY on EVERY factual sentence. A sentence without a citation is INVALID and will be rejected.
 - Citations MUST be placed at the END of each sentence, immediately after the period (or other sentence-ending punctuation).
-- Cite the source by putting the content ID in curly braces right after the sentence-ending punctuation.
-- Use the EXACT Content ID shown in the result, copied character-for-character. Do NOT shorten, abbreviate, paraphrase, or invent Content IDs.
-  Example: "Content ID: 9bce0ff1797f_aHR0cHM6Ly9zdHJnYWxsZWdpc29jbWthMDAxNWE2MDAuYmxvYi5jb3JlLndpbmRvd3MubmV0L2RvY3VtZW50cy9DUkclMjBPdmVydmlld190YWdnZWQlMjB0ZWsucGRm0_text_sections_0" → cite as {{9bce0ff1797f_aHR0cHM6Ly9zdHJnYWxsZWdpc29jbWthMDAxNWE2MDAuYmxvYi5jb3JlLndpbmRvd3MubmV0L2RvY3VtZW50cy9DUkclMjBPdmVydmlld190YWdnZWQlMjB0ZWsucGRm0_text_sections_0}}.
-- The same content ID can be cited multiple times throughout your answer.
-- If a sentence is supported by multiple Vetted Results, place each Content ID in its own curly braces back-to-back, e.g. {{id_a}}{{id_b}}.
-- NEVER place citations in the middle of a sentence - only at the end after the period.
-- Before finalizing your answer, re-read it and verify that EVERY sentence ends with at least one {{Content ID}} citation. If any sentence is missing a citation, either add one from the Vetted Results or delete that sentence.
+- Cite a Vetted Result by its short Citation Token in curly braces. Each Vetted Result above shows a token of the form `ref-N` (e.g. `ref-1`, `ref-2`, `ref-3`).
+- Cite by writing the token in curly braces directly after the period: `{{ref-1}}`, `{{ref-2}}`, etc. NEVER invent a different token.
+- The same Citation Token can be cited multiple times throughout your answer.
+- If a sentence is supported by multiple Vetted Results, place each token in its own curly braces back-to-back, e.g. `{{ref-1}}{{ref-3}}`.
+- NEVER place citations in the middle of a sentence — only at the end after the period.
+- Before finalizing your answer, re-read it and verify that EVERY sentence ends with at least one `{{ref-N}}` citation. If any sentence is missing a citation, either add one from the Vetted Results or delete that sentence.
 
-Example: "Azure Cosmos DB supports multiple APIs.{{9bce0ff1797f_aHR0cHM6Ly9zdHJnYWxsZWdpc29jbWthMDAxNWE2MDAuYmxvYi5jb3JlLndpbmRvd3MubmV0L2RvY3VtZW50cy9DUkclMjBPdmVydmlld190YWdnZWQlMjB0ZWsucGRm0_text_sections_0}} It provides global distribution.{{9bce0ff1797f_aHR0cHM6Ly9zdHJnYWxsZWdpc29jbWthMDAxNWE2MDAuYmxvYi5jb3JlLndpbmRvd3MubmV0L2RvY3VtZW50cy9DUkclMjBPdmVydmlld190YWdnZWQlMjB0ZWsucGRm0_text_sections_1}}"
+Example: "Azure Cosmos DB supports multiple APIs.{{ref-1}} It provides global distribution.{{ref-2}} It also offers multi-region writes.{{ref-1}}{{ref-3}}"
 
 ## CRITICAL: Citations Are Mandatory
 
