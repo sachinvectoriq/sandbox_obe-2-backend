@@ -113,9 +113,34 @@ class AnswerGenerator:
             
             # Extract which documents were actually cited
             cited_docs = self._extract_cited_documents(response, documents)
-   
+
+            # Safety net: if LLM produced no usable citations, retry once with a
+            # stricter reminder so that the final answer always carries citations.
+            if not cited_docs:
+                self.logger.warning(
+                    "[Citation] No valid citations in initial response - retrying with stricter prompt"
+                )
+                retry_prompt = (
+                    generated_answer_prompt
+                    + "\n\n=== CITATION ENFORCEMENT (RETRY) ===\n"
+                    "Your previous response was missing citations or used invalid Content IDs.\n"
+                    "You MUST cite EVERY factual sentence by appending the EXACT Content ID "
+                    "from the Vetted Results above in curly braces immediately after the "
+                    "sentence-ending period. Copy the Content ID character-for-character. "
+                    "Do not invent or shorten Content IDs. Sentences without a citation will "
+                    "be discarded."
+                )
+                retry_response = await self._call_llm(
+                    generated_answer_prompt=retry_prompt,
+                    conversation_history=conversation_history
+                )
+                retry_cited_docs = self._extract_cited_documents(retry_response, documents)
+                if retry_cited_docs:
+                    response = retry_response
+                    cited_docs = retry_cited_docs
+
             # Replace {Content Id} with [1], [2], [3] and sort consecutive citations
-            final_answer = self._replace_content_with_indices(response, cited_docs)
+            final_answer = self._replace_content_with_indices(response, cited_docs, documents)
             
             # Create citations only for documents that were cited
             citations = self.citation_tracker.create_citations(cited_docs)
@@ -212,6 +237,41 @@ class AnswerGenerator:
         
         return result.messages[-1].text
     
+    def _resolve_cited_id(
+        self,
+        cited_content_id: str,
+        content_id_map: Dict[str, RetrievedDocument],
+    ) -> Optional[RetrievedDocument]:
+        """
+        Resolve a cited content ID to a real document.
+
+        Tries exact match first, then a tolerant fallback that handles common
+        LLM mistakes such as truncating, expanding, or slightly mangling the
+        long base64 portion of a content ID. Returns None if no plausible
+        match is found.
+        """
+        if cited_content_id in content_id_map:
+            return content_id_map[cited_content_id]
+
+        # Tolerant fallback: a real content_id contains the cited fragment, or
+        # vice versa. Pick the one with the longest shared overlap so we don't
+        # accidentally collapse multiple distinct sources to the same one.
+        best_doc: Optional[RetrievedDocument] = None
+        best_overlap = 0
+        # Require a reasonable minimum overlap to avoid spurious matches.
+        min_overlap = max(12, len(cited_content_id) // 3)
+
+        for real_id, doc in content_id_map.items():
+            if cited_content_id in real_id or real_id in cited_content_id:
+                overlap = min(len(cited_content_id), len(real_id))
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_doc = doc
+
+        if best_doc is not None and best_overlap >= min_overlap:
+            return best_doc
+        return None
+
     def _extract_cited_documents(self, answer_text: str, documents: List[RetrievedDocument]) -> List[RetrievedDocument]:
         """
         Extract which documents were actually cited in the answer.
@@ -250,20 +310,22 @@ class AnswerGenerator:
             display_id = doc.content_id if len(doc.content_id) <= 50 else f"{doc.content_id[:25]}...{doc.content_id[-25:]}"
             self.logger.info(f"  Doc[{i}] content_id: {display_id}")
         
-        # Match cited content IDs to documents (in order of first appearance)
+        # Match cited content IDs to documents (in order of first appearance).
+        # Use the tolerant resolver so that minor LLM mistakes in copying the
+        # long content_id still attach a citation instead of silently dropping it.
         cited_docs = []
-        seen_content_ids = set()
-        unmatched_ids = set()  # Use set for O(1) lookup instead of list
-        
+        seen_doc_keys = set()
+        unmatched_ids = set()
+
         for cited_content_id in cited_content_ids:
-            if cited_content_id in seen_content_ids:
-                continue  # Already processed
-            
-            if cited_content_id in content_id_map:
-                cited_docs.append(content_id_map[cited_content_id])
-                seen_content_ids.add(cited_content_id)
-            else:
+            doc = self._resolve_cited_id(cited_content_id, content_id_map)
+            if doc is None:
                 unmatched_ids.add(cited_content_id)
+                continue
+            if doc.content_id in seen_doc_keys:
+                continue
+            cited_docs.append(doc)
+            seen_doc_keys.add(doc.content_id)
         
         # Log unmatched content IDs
         if unmatched_ids:
@@ -275,19 +337,31 @@ class AnswerGenerator:
         self.logger.info(f"[Citation] Found {len(cited_docs)} cited documents from {len(cited_content_ids)} citations")
         return cited_docs
     
-    def _replace_content_with_indices(self, answer_text: str, cited_docs: List[RetrievedDocument]) -> str:
+    def _replace_content_with_indices(
+        self,
+        answer_text: str,
+        cited_docs: List[RetrievedDocument],
+        all_documents: Optional[List[RetrievedDocument]] = None,
+    ) -> str:
         """
         Replace {Content ID} patterns with [n] citation indices and sort consecutive citations.
         
         Args:
             answer_text: Answer text with {Content ID} patterns
             cited_docs: List of cited documents in order (determines citation numbering)
+            all_documents: Full set of retrieved documents, used to tolerantly
+                resolve {Content ID} markers whose IDs don't match exactly.
         
         Returns:
             Answer text with sorted [1], [2], [3] citations
         """
         # Create content ID to index mapping (1-based)
         content_id_to_index = {doc.content_id: i + 1 for i, doc in enumerate(cited_docs)}
+        # Build a tolerant lookup over ALL retrieved documents so we can rescue
+        # citations whose content_id was slightly mangled by the LLM.
+        full_id_map: Dict[str, RetrievedDocument] = {
+            d.content_id: d for d in (all_documents or cited_docs)
+        }
         
         self.logger.info(f"[Citation] Building index mapping for {len(cited_docs)} cited documents")
         
@@ -298,13 +372,25 @@ class AnswerGenerator:
         def replace_content_id(match):
             nonlocal replacements_made
             cited_content_id = match.group(1)
-            
+
+            # Exact match against the cited-doc index map.
             if cited_content_id in content_id_to_index:
                 replacements_made += 1
                 return f"[{content_id_to_index[cited_content_id]}]"
-            else:
-                replacements_failed.add(cited_content_id)
-                return ""
+
+            # Tolerant resolution: map a mangled ID to a real document.
+            resolved = self._resolve_cited_id(cited_content_id, full_id_map)
+            if resolved is not None:
+                # Ensure the resolved doc has an index; if not, append it so
+                # the citation can still be rendered to the user.
+                if resolved.content_id not in content_id_to_index:
+                    cited_docs.append(resolved)
+                    content_id_to_index[resolved.content_id] = len(cited_docs)
+                replacements_made += 1
+                return f"[{content_id_to_index[resolved.content_id]}]"
+
+            replacements_failed.add(cited_content_id)
+            return ""
         
         # Replace all {Content ID} patterns with [n] (or remove if unmatched) using pre-compiled regex
         result = self._CITATION_PATTERN.sub(replace_content_id, answer_text)
