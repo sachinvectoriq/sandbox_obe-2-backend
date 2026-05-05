@@ -174,7 +174,7 @@ class AnswerGenerator:
             }
         )
     
-    async def _call_llm(self, generated_answer_prompt: str, conversation_history: Optional[List[Dict[str, str]]] = None, max_tokens: int = 300) -> str:
+    async def _call_llm(self, generated_answer_prompt: str, conversation_history: Optional[List[Dict[str, str]]] = None, max_tokens: int = 800) -> str:
         """Call LLM using MAF ChatAgent with generated answer prompt.
         
         The system prompt (closed-book rules, citation rules, etc.) is set at
