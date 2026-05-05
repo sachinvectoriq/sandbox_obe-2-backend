@@ -294,8 +294,7 @@ class AgenticRAGWorkflow:
                 result_parts = [
                     f"\nResult #{i}",
                     "=" * 80,
-                    f"Content ID: {doc.content_id}",
-                    f"Document ID: {doc.document_id}",
+                    f"Citation Token: ref-{i}    <-- USE THIS to cite this result, e.g. {{ref-{i}}}",
                     f"Title: {doc.title}",
                     f"Source: {doc.source}",
                     f"Page Number: {doc.page_number if doc.page_number else 'N/A'}",
