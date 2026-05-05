@@ -37,6 +37,7 @@ class AnswerGenerator:
     _CITATION_PATTERN = re.compile(r"\{([^}]+)\}")
     _CITATION_NUMBER_PATTERN = re.compile(r'\[(\d+)\]')
     _CONSECUTIVE_CITATIONS_PATTERN = re.compile(r'(?:\[\d+\]){2,}')
+    _REF_TOKEN_PATTERN = re.compile(r'^\s*ref[-_\s]?(\d+)\s*$', re.IGNORECASE)
     
     def __init__(self, settings: Settings, logger: Logger, citation_tracker: CitationTracker):
         """
@@ -123,12 +124,12 @@ class AnswerGenerator:
                 retry_prompt = (
                     generated_answer_prompt
                     + "\n\n=== CITATION ENFORCEMENT (RETRY) ===\n"
-                    "Your previous response was missing citations or used invalid Content IDs.\n"
-                    "You MUST cite EVERY factual sentence by appending the EXACT Content ID "
-                    "from the Vetted Results above in curly braces immediately after the "
-                    "sentence-ending period. Copy the Content ID character-for-character. "
-                    "Do not invent or shorten Content IDs. Sentences without a citation will "
-                    "be discarded."
+                    "Your previous response was missing citations. "
+                    "You MUST cite EVERY factual sentence by appending the short Citation Token "
+                    "for the supporting Vetted Result in curly braces immediately after the "
+                    "sentence-ending period. The tokens are listed above as `ref-1`, `ref-2`, etc. "
+                    "Cite by writing exactly `{ref-1}`, `{ref-2}`, ... — do NOT invent other "
+                    "tokens. Sentences without a citation will be discarded."
                 )
                 retry_response = await self._call_llm(
                     generated_answer_prompt=retry_prompt,
@@ -241,24 +242,42 @@ class AnswerGenerator:
         self,
         cited_content_id: str,
         content_id_map: Dict[str, RetrievedDocument],
+        documents: Optional[List[RetrievedDocument]] = None,
     ) -> Optional[RetrievedDocument]:
         """
-        Resolve a cited content ID to a real document.
+        Resolve a cited token to a real document.
 
-        Tries exact match first, then a tolerant fallback that handles common
-        LLM mistakes such as truncating, expanding, or slightly mangling the
-        long base64 portion of a content ID. Returns None if no plausible
-        match is found.
+        Supports three forms (in priority order):
+        1. Short ref tokens like "ref-1", "ref_2", "ref 3" → maps to documents[N-1].
+        2. Exact match against the full content_id.
+        3. Tolerant substring/overlap match for slightly mangled content_ids.
+        Returns None if no plausible match is found.
         """
+        # 1. Short ref token (preferred new format). Use a simple, regex-free
+        # check so we never depend on regex flag handling. Accepts forms like
+        # "ref-1", "ref_2", "ref 3", "REF1", with optional surrounding spaces
+        # and optional surrounding braces (in case the LLM nested them).
+        if cited_content_id and documents:
+            stripped = cited_content_id.strip().strip("{}").strip().lower()
+            if stripped.startswith("ref"):
+                tail = stripped[3:].lstrip("-_ ").strip()
+                if tail.isdigit():
+                    idx = int(tail) - 1
+                    self.logger.info(
+                        f"[Citation] ref-token '{cited_content_id}' -> index {idx} "
+                        f"(documents available: {len(documents)})"
+                    )
+                    if 0 <= idx < len(documents):
+                        return documents[idx]
+                    return None
+
+        # 2. Exact content_id match.
         if cited_content_id in content_id_map:
             return content_id_map[cited_content_id]
 
-        # Tolerant fallback: a real content_id contains the cited fragment, or
-        # vice versa. Pick the one with the longest shared overlap so we don't
-        # accidentally collapse multiple distinct sources to the same one.
+        # 3. Tolerant fallback for mangled content_ids.
         best_doc: Optional[RetrievedDocument] = None
         best_overlap = 0
-        # Require a reasonable minimum overlap to avoid spurious matches.
         min_overlap = max(12, len(cited_content_id) // 3)
 
         for real_id, doc in content_id_map.items():
@@ -318,7 +337,7 @@ class AnswerGenerator:
         unmatched_ids = set()
 
         for cited_content_id in cited_content_ids:
-            doc = self._resolve_cited_id(cited_content_id, content_id_map)
+            doc = self._resolve_cited_id(cited_content_id, content_id_map, documents)
             if doc is None:
                 unmatched_ids.add(cited_content_id)
                 continue
@@ -379,7 +398,7 @@ class AnswerGenerator:
                 return f"[{content_id_to_index[cited_content_id]}]"
 
             # Tolerant resolution: map a mangled ID to a real document.
-            resolved = self._resolve_cited_id(cited_content_id, full_id_map)
+            resolved = self._resolve_cited_id(cited_content_id, full_id_map, all_documents)
             if resolved is not None:
                 # Ensure the resolved doc has an index; if not, append it so
                 # the citation can still be rendered to the user.
