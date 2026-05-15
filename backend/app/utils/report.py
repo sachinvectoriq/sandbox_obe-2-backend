@@ -33,7 +33,8 @@ EXCLUDED_USERS = [
     "Anonymous",
     "Test User",
     "string",
-    "Chanbasava Koti"
+    "Chanbasava Koti",
+    "User1"
 ]
 
 
