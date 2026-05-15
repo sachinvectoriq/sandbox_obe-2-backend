@@ -23,9 +23,11 @@ def get_cosmos_client():
 EXCLUDED_USERS = [
     "Bhaskar, Solomon",
     "Sachin Bhusanurmath",
+    "Jain, Anshuman",
     "HardCodedUser",
     "Anonymous",
-    "Test User"
+    "Test User",
+    "string"
 ]
 
 
@@ -52,13 +54,19 @@ async def combined_report(
         # ---------------------------------------------------
 
         audit_db = cosmos_client.get_database_client("audit-table")
-        audit_container = audit_db.get_container_client("audit-container")
+
+        audit_container = audit_db.get_container_client(
+            "audit-container"
+        )
 
         # ---------------------------------------------------
         # Feedback DB / Container
         # ---------------------------------------------------
 
-        feedback_db = cosmos_client.get_database_client("feedback-table")
+        feedback_db = cosmos_client.get_database_client(
+            "feedback-table"
+        )
+
         feedback_container = feedback_db.get_container_client(
             "feedback-container"
         )
@@ -70,7 +78,9 @@ async def combined_report(
         conditions = []
         parameters = []
 
+        # ---------------------------------------------------
         # Excluded Users
+        # ---------------------------------------------------
 
         excluded_users_query = ",".join(
             [f"'{user}'" for user in EXCLUDED_USERS]
@@ -80,10 +90,13 @@ async def combined_report(
             f"c.user_name NOT IN ({excluded_users_query})"
         )
 
+        # ---------------------------------------------------
         # Optional Filters
+        # ---------------------------------------------------
 
         if user_name:
             conditions.append("c.user_name = @user_name")
+
             parameters.append({
                 "name": "@user_name",
                 "value": user_name
@@ -91,6 +104,7 @@ async def combined_report(
 
         if persona:
             conditions.append("c.persona = @persona")
+
             parameters.append({
                 "name": "@persona",
                 "value": persona
@@ -98,6 +112,7 @@ async def combined_report(
 
         if opco:
             conditions.append("c.opco = @opco")
+
             parameters.append({
                 "name": "@opco",
                 "value": opco
@@ -105,6 +120,7 @@ async def combined_report(
 
         if start_date:
             conditions.append("c.date >= @start_date")
+
             parameters.append({
                 "name": "@start_date",
                 "value": start_date
@@ -112,6 +128,7 @@ async def combined_report(
 
         if end_date:
             conditions.append("c.date <= @end_date")
+
             parameters.append({
                 "name": "@end_date",
                 "value": end_date
@@ -153,6 +170,7 @@ async def combined_report(
             query=audit_query,
             parameters=parameters
         ):
+
             audit_items.append(item)
 
         # ---------------------------------------------------
@@ -179,6 +197,7 @@ async def combined_report(
         async for item in feedback_container.query_items(
             query=feedback_query
         ):
+
             feedback_items.append(item)
 
         # ---------------------------------------------------
@@ -196,8 +215,14 @@ async def combined_report(
             )
 
             feedback_lookup[key] = {
-                "feedback_type": fb.get("feedback_type", "-"),
-                "feedback_note": fb.get("feedback_note", "-")
+                "feedback_type": fb.get(
+                    "feedback_type",
+                    "-"
+                ),
+                "feedback_note": fb.get(
+                    "feedback_note",
+                    "-"
+                )
             }
 
         # ---------------------------------------------------
@@ -223,17 +248,23 @@ async def combined_report(
             )
 
             # ---------------------------------------------------
-            # Format Timestamp Properly
+            # Format Timestamp
             # ---------------------------------------------------
 
-            formatted_timestamp = audit.get("timestamp_utc", "-")
+            formatted_timestamp = audit.get(
+                "timestamp_utc",
+                "-"
+            )
 
             try:
 
                 if formatted_timestamp:
 
                     parsed_time = datetime.fromisoformat(
-                        formatted_timestamp.replace("Z", "+00:00")
+                        formatted_timestamp.replace(
+                            "Z",
+                            "+00:00"
+                        )
                     )
 
                     formatted_timestamp = parsed_time.strftime(
@@ -248,16 +279,41 @@ async def combined_report(
             # ---------------------------------------------------
 
             combined_row = {
-                "user_name": audit.get("user_name", "-"),
-                "job_title": audit.get("job_title", "-"),
-                "opco": audit.get("opco", "-"),
-                "persona": audit.get("persona", "-"),
-                "query": audit.get("query", "-"),
-                "ai_response": audit.get("ai_response", "-"),
-                "citations": audit.get("citations", "-"),
+                "user_name": audit.get(
+                    "user_name",
+                    "-"
+                ),
+                "job_title": audit.get(
+                    "job_title",
+                    "-"
+                ),
+                "opco": audit.get(
+                    "opco",
+                    "-"
+                ),
+                "persona": audit.get(
+                    "persona",
+                    "-"
+                ),
+                "query": audit.get(
+                    "query",
+                    "-"
+                ),
+                "ai_response": audit.get(
+                    "ai_response",
+                    "-"
+                ),
+                "citations": audit.get(
+                    "citations",
+                    "-"
+                ),
                 "date_and_time": formatted_timestamp,
-                "feedback_type": feedback_data["feedback_type"],
-                "feedback_note": feedback_data["feedback_note"]
+                "feedback_type": feedback_data[
+                    "feedback_type"
+                ],
+                "feedback_note": feedback_data[
+                    "feedback_note"
+                ]
             }
 
             final_results.append(combined_row)
@@ -281,6 +337,76 @@ async def combined_report(
         }
 
     except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+# ---------------------------------------------------
+# Get Unique User Names
+# ---------------------------------------------------
+
+@router.get("/users")
+async def get_unique_users(
+    cosmos_client: CosmosClient = Depends(
+        get_cosmos_client
+    ),
+):
+
+    try:
+
+        # ---------------------------------------------------
+        # Audit DB / Container
+        # ---------------------------------------------------
+
+        audit_db = cosmos_client.get_database_client(
+            "audit-table"
+        )
+
+        audit_container = audit_db.get_container_client(
+            "audit-container"
+        )
+
+        # ---------------------------------------------------
+        # Query
+        # ---------------------------------------------------
+
+        query = """
+        SELECT DISTINCT c.user_name
+        FROM c
+        WHERE IS_DEFINED(c.user_name)
+        """
+
+        users = set()
+
+        async for item in audit_container.query_items(
+            query=query
+        ):
+
+            user_name = item.get("user_name")
+
+            if (
+                user_name and
+                user_name not in EXCLUDED_USERS
+            ):
+
+                users.add(user_name)
+
+        # ---------------------------------------------------
+        # Final Sorted List
+        # ---------------------------------------------------
+
+        final_users = sorted(list(users))
+
+        return {
+            "count": len(final_users),
+            "users": final_users
+        }
+
+    except Exception as e:
+
         raise HTTPException(
             status_code=500,
             detail=str(e)
