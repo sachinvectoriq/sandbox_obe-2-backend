@@ -1,283 +1,545 @@
-from azure.storage.blob import ContainerClient
-# =========================
-# FIND BLOB PATH BY FILENAME (NESTED FOLDERS)
-# =========================
-def find_blob_by_filename(connection_string: str, container_name: str, filename: str) -> str:
-    """
-    Scan all blobs in the container (including nested folders) and return the full blob path for the given filename.
-    Returns None if not found.
-    """
-    container = ContainerClient.from_connection_string(connection_string, container_name)
-    for blob in container.list_blobs():
-        actual_name = blob.name.split("/")[-1]
-        if actual_name == filename:
-            return blob.name  # full path (including folders)
-    return None
-from fastapi import APIRouter
-from typing import Dict, List, Any
-from azure.storage.blob import BlobClient
-import requests
-import time
-import re
-import asyncio   # ✅ ADDED ONLY THIS
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from azure.cosmos.aio import CosmosClient
+from app.core.container import Container
+from datetime import datetime
 
-router = APIRouter()
-
-# =========================
-# CONFIG
-# =========================
-AZURE_STORAGE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=saocm20obedev001;AccountKey=tPuIekoPR/H5VK++7dtJ4MnIkmb2M46j47vEA8ooT91ixadSuE5V1PSpfn2zH0kByBBglkYXh8+++ASt3pnjwA==;EndpointSuffix=core.windows.net"
-CONTAINER_NAME = ""  # dynamic from skillset
-
-DOC_INTELLIGENCE_ENDPOINT = "https://ais-ocm20-obe-dev-001.cognitiveservices.azure.com/"
-DOC_INTELLIGENCE_KEY = "3D5frJJMSDniR21q5dtm7V5mtu0Zlwhp3pIWw1vqp5b2Y8j6CPYGJQQJ99CBACHYHv6XJ3w3AAAEACOGKBNk"
+router = APIRouter(
+    prefix="/audit-report",
+    tags=["Audit Report"]
+)
 
 
-# =========================
-# STEP 1: DOWNLOAD FILE
-# =========================
-def download_blob(file_name: str, container_name: str) -> bytes:
-    # Use the new function to find the full blob path (including nested folders)
-    blob_path = find_blob_by_filename(AZURE_STORAGE_CONNECTION_STRING, container_name, file_name)
-    if not blob_path:
-        raise FileNotFoundError(f"File '{file_name}' not found in container '{container_name}' (including nested folders)")
-    blob = BlobClient.from_connection_string(
-        AZURE_STORAGE_CONNECTION_STRING,
-        container_name=container_name,
-        blob_name=blob_path
-    )
-    return blob.download_blob().readall()
+# ---------------------------------------------------
+# Dependency
+# ---------------------------------------------------
+
+def get_cosmos_client():
+
+    container = Container()
+
+    return container.cosmos_client()
 
 
-# =========================
-# STEP 2: OCR (FIRST 4 PAGES)
-# =========================
-def run_ocr(file_bytes: str) -> str:
-    url = f"{DOC_INTELLIGENCE_ENDPOINT}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31&pages=1-4"
+# ---------------------------------------------------
+# Excluded Users
+# ---------------------------------------------------
 
-    headers = {
-        "Ocp-Apim-Subscription-Key": DOC_INTELLIGENCE_KEY,
-        "Content-Type": "application/pdf"
-    }
-
-    response = requests.post(url, headers=headers, data=file_bytes)
-
-    if response.status_code != 202:
-        raise Exception(f"OCR submit failed: {response.text}")
-
-    operation_url = response.headers["operation-location"]
-
-    while True:
-        result = requests.get(operation_url, headers={
-            "Ocp-Apim-Subscription-Key": DOC_INTELLIGENCE_KEY
-        })
-
-        result_json = result.json()
-
-        if result_json["status"] == "succeeded":
-            break
-        elif result_json["status"] == "failed":
-            raise Exception("OCR failed")
-
-        time.sleep(2)
-
-    text = ""
-    for page in result_json["analyzeResult"]["pages"]:
-        for line in page["lines"]:
-            text += line["content"] + "\n"
-
-    return text
+EXCLUDED_USERS = [
+    "Bhaskar, Solomon",
+    "Sachin Bhusanurmath",
+    "Jain, Anshuman",
+    "HardCodedUser",
+    "Anonymous",
+    "Test User"
+]
 
 
-# =========================
-# STEP 3: EXTRACTION (STRICT + FIXED)
-# =========================
-def extract_footer_values(text: str, label: str) -> List[str]:
-    OPCOS = [
-        "Actalent",
-        "Actalent Services",
-        "Aerotek",
-        "Aerotek Services",
-        "Aston Carter",
-        "TEKsystems",
-        "TEKsystems Global Services",
-        "Allegis Corporate Services"
-    ]
+# ---------------------------------------------------
+# Master OPCO / Persona Values
+# ---------------------------------------------------
 
-    PERSONAS = [
-        "FSG",
-        "CLS",
-        "Sales and Recruiting",
-        "Delivery and TA Services",
-        "Front Office",
-        "Back Office",
-        "Corporate Services",
-        "Talent"
-    ]
+OPCOS = [
+    "Actalent",
+    "Actalent Services",
+    "Aerotek",
+    "Aerotek Services",
+    "Aston Carter",
+    "TEKsystems",
+    "TEKsystems Global Services",
+    "Allegis Corporate Services"
+]
 
-    pattern = rf"{label}\s*:\s*(.*)"
-
-    match = re.search(pattern, text, re.IGNORECASE)
-    if not match:
-        return []
-
-    raw = match.group(1).split("\n")[0].strip().lower()
-
-    search_list = OPCOS if label == "Operating Companies" else PERSONAS
-
-    tokens = re.split(r"[,\|]", raw)
-    tokens = [t.strip().lower() for t in tokens if t.strip()]
-
-    found = []
-    for token in tokens:
-        for item in search_list:
-            if token == item.lower():
-                if item not in found:
-                    found.append(item)
-
-    return found
+PERSONAS = [
+    "FSG",
+    "CLS",
+    "Sales and Recruiting",
+    "Delivery and TA Services",
+    "Front Office",
+    "Back Office",
+    "Corporate Services",
+    "Talent"
+]
 
 
-# =========================
-# POST PROCESSING
-# =========================
-def normalize_opco(v: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", v.lower())
+# ---------------------------------------------------
+# Create Normalized Lookup Maps
+# ---------------------------------------------------
 
+def normalize_value(value: str) -> str:
 
-def normalize_persona(v: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", v.lower())
-
-
-# =========================
-# TAG API CALL (ONLY ADDITION)
-# =========================
-def send_to_tag_api(payload: Dict[str, Any]):
-    url = "https://app-ocm20-obe-dev-001-dgd8hbbyeyc2d2fv.eastus2-01.azurewebsites.net/api/tag-logs/submit"
-    try:
-        requests.post(url, json=payload, timeout=5)
-    except Exception as e:
-        print("⚠️ Tag API failed:", e)
-
-
-# =========================
-# CORE LOGIC (FULL TEXT)
-# =========================
-def process_document(file_name: str, container_name: str) -> Dict[str, Any]:
-    print(f"📥 Downloading: {file_name} from {container_name}")
-    file_bytes = download_blob(file_name, container_name)
-
-    print("🔍 Running OCR...")
-    text = run_ocr(file_bytes)
-
-    print("🧠 Extracting OPCO + Persona from FULL TEXT...")
-
-    opcos = extract_footer_values(text, "Operating Companies")
-    personas = (
-        extract_footer_values(text, "Persona Categories") or
-        extract_footer_values(text, "Personas")
+    return (
+        value.lower()
+        .replace(" ", "")
+        .replace("-", "")
     )
 
-    # =========================
-    # CLEAN NULL VALUES
-    # =========================
-    def clean_list(values: List[str]) -> List[str]:
-        cleaned = []
-        for v in values:
-            if not v:
-                continue
-            if str(v).strip().lower() in ["null", "none", ""]:
-                continue
-            cleaned.append(v)
-        return cleaned
 
-    opcos = clean_list(opcos)
-    personas = clean_list(personas)
+OPCO_LOOKUP = {
+    normalize_value(opco): opco
+    for opco in OPCOS
+}
 
-    # =========================
-    # FINAL NORMALIZED OUTPUT
-    # =========================
-    opcos = opcos if opcos else None
-    personas = personas if personas else None
+PERSONA_LOOKUP = {
+    normalize_value(persona): persona
+    for persona in PERSONAS
+}
 
-    result = {
-        "opco_values_array": [normalize_opco(x) for x in opcos] if opcos else None,
-        "persona_values_array": [normalize_persona(x) for x in personas] if personas else None,
-        "isValid": bool(opcos and personas),
-        "executed": True
-    }
 
-    # =========================
-    # ABSENT LOGIC (STRICT ENUM)
-    # =========================
-    if opcos is None and personas is None:
-        absent_value = "both"
-    elif opcos is None:
-        absent_value = "opco"
-    elif personas is None:
-        absent_value = "persona"
-    else:
-        absent_value = None
+# ---------------------------------------------------
+# Post Processing Formatter
+# ---------------------------------------------------
 
-    # =========================
-    # TAG API PAYLOAD
-    # =========================
+def format_opco(value: Optional[str]) -> str:
+
+    if not value:
+        return "-"
+
+    normalized = normalize_value(value)
+
+    return OPCO_LOOKUP.get(
+        normalized,
+        value
+    )
+
+
+def format_persona(value: Optional[str]) -> str:
+
+    if not value:
+        return "-"
+
+    normalized = normalize_value(value)
+
+    return PERSONA_LOOKUP.get(
+        normalized,
+        value
+    )
+
+
+# ---------------------------------------------------
+# Combined Audit + Feedback Report
+# ---------------------------------------------------
+
+@router.get("/combined-report")
+async def combined_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_name: Optional[str] = None,
+    persona: Optional[str] = None,
+    opco: Optional[str] = None,
+    limit: int = Query(100, ge=1),
+    offset: int = Query(0, ge=0),
+    cosmos_client: CosmosClient = Depends(
+        get_cosmos_client
+    ),
+):
+
     try:
-        payload = {
-            "doc_id": file_name,
-            "event_type": "footer_extraction",
-            "source": "ocr_pipeline",
-            "container_name": container_name,
-            "document_name": file_name,
-            "opcos": opcos,
-            "personas": personas,
-            "presence_type": "extracted",
-            "absent": absent_value,
-            "metadata": {
-                "opcos": result["opco_values_array"],
-                "personas": result["persona_values_array"],
-                "isValid": result["isValid"],
-                "container": container_name,
-                "document": file_name
+
+        # ---------------------------------------------------
+        # Audit DB / Container
+        # ---------------------------------------------------
+
+        audit_db = cosmos_client.get_database_client(
+            "audit-table"
+        )
+
+        audit_container = audit_db.get_container_client(
+            "audit-container"
+        )
+
+        # ---------------------------------------------------
+        # Feedback DB / Container
+        # ---------------------------------------------------
+
+        feedback_db = cosmos_client.get_database_client(
+            "feedback-table"
+        )
+
+        feedback_container = feedback_db.get_container_client(
+            "feedback-container"
+        )
+
+        # ---------------------------------------------------
+        # Build Audit Query
+        # ---------------------------------------------------
+
+        conditions = []
+
+        parameters = []
+
+        # ---------------------------------------------------
+        # Excluded Users
+        # ---------------------------------------------------
+
+        excluded_users_query = ",".join(
+            [
+                f"'{user}'"
+                for user in EXCLUDED_USERS
+            ]
+        )
+
+        conditions.append(
+            f"c.user_name NOT IN ({excluded_users_query})"
+        )
+
+        # ---------------------------------------------------
+        # Optional Filters
+        # ---------------------------------------------------
+
+        if user_name:
+
+            conditions.append(
+                "c.user_name = @user_name"
+            )
+
+            parameters.append({
+                "name": "@user_name",
+                "value": user_name
+            })
+
+        if persona:
+
+            normalized_persona = normalize_value(
+                persona
+            )
+
+            conditions.append(
+                "REPLACE(LOWER(c.persona), ' ', '') = @persona"
+            )
+
+            parameters.append({
+                "name": "@persona",
+                "value": normalized_persona
+            })
+
+        if opco:
+
+            normalized_opco = normalize_value(
+                opco
+            )
+
+            conditions.append(
+                "REPLACE(LOWER(c.opco), ' ', '') = @opco"
+            )
+
+            parameters.append({
+                "name": "@opco",
+                "value": normalized_opco
+            })
+
+        if start_date:
+
+            conditions.append(
+                "c.date >= @start_date"
+            )
+
+            parameters.append({
+                "name": "@start_date",
+                "value": start_date
+            })
+
+        if end_date:
+
+            conditions.append(
+                "c.date <= @end_date"
+            )
+
+            parameters.append({
+                "name": "@end_date",
+                "value": end_date
+            })
+
+        where_clause = " AND ".join(
+            conditions
+        )
+
+        # ---------------------------------------------------
+        # Audit Query
+        # ---------------------------------------------------
+
+        audit_query = f"""
+        SELECT
+            c.id,
+            c.chat_session_id,
+            c.user_id,
+            c.user_name,
+            c.job_title,
+            c.opco,
+            c.persona,
+            c.timestamp_utc,
+            c.date,
+            c.query,
+            c.ai_response,
+            c.citations
+        FROM c
+        WHERE {where_clause}
+        ORDER BY c._ts DESC
+        OFFSET {offset} LIMIT {limit}
+        """
+
+        # ---------------------------------------------------
+        # Fetch Audit Records
+        # ---------------------------------------------------
+
+        audit_items = []
+
+        async for item in audit_container.query_items(
+            query=audit_query,
+            parameters=parameters
+        ):
+
+            audit_items.append(item)
+
+        # ---------------------------------------------------
+        # Feedback Query
+        # ---------------------------------------------------
+
+        feedback_query = """
+        SELECT
+            c.chat_session_id,
+            c.query,
+            c.ai_response,
+            c.feedback_type,
+            c.feedback_note
+        FROM c
+        WHERE c.record_type = 'feedback'
+        """
+
+        # ---------------------------------------------------
+        # Fetch Feedback Records
+        # ---------------------------------------------------
+
+        feedback_items = []
+
+        async for item in feedback_container.query_items(
+            query=feedback_query
+        ):
+
+            feedback_items.append(item)
+
+        # ---------------------------------------------------
+        # Create Feedback Lookup
+        # ---------------------------------------------------
+
+        feedback_lookup = {}
+
+        for fb in feedback_items:
+
+            key = (
+                fb.get("chat_session_id"),
+                fb.get("query"),
+                fb.get("ai_response")
+            )
+
+            feedback_lookup[key] = {
+                "feedback_type": fb.get(
+                    "feedback_type",
+                    "-"
+                ),
+                "feedback_note": fb.get(
+                    "feedback_note",
+                    "-"
+                )
             }
+
+        # ---------------------------------------------------
+        # Merge Audit + Feedback
+        # ---------------------------------------------------
+
+        final_results = []
+
+        for audit in audit_items:
+
+            key = (
+                audit.get("chat_session_id"),
+                audit.get("query"),
+                audit.get("ai_response")
+            )
+
+            feedback_data = feedback_lookup.get(
+                key,
+                {
+                    "feedback_type": "-",
+                    "feedback_note": "-"
+                }
+            )
+
+            # ---------------------------------------------------
+            # Format Timestamp
+            # ---------------------------------------------------
+
+            formatted_timestamp = audit.get(
+                "timestamp_utc",
+                "-"
+            )
+
+            try:
+
+                if formatted_timestamp:
+
+                    parsed_time = datetime.fromisoformat(
+                        formatted_timestamp.replace(
+                            "Z",
+                            "+00:00"
+                        )
+                    )
+
+                    formatted_timestamp = (
+                        parsed_time.strftime(
+                            "%b %d, %Y, %I:%M %p"
+                        )
+                    )
+
+            except Exception:
+                pass
+
+            # ---------------------------------------------------
+            # Post Process OPCO / Persona
+            # ---------------------------------------------------
+
+            formatted_opco = format_opco(
+                audit.get("opco")
+            )
+
+            formatted_persona = format_persona(
+                audit.get("persona")
+            )
+
+            # ---------------------------------------------------
+            # Final Combined Row
+            # ---------------------------------------------------
+
+            combined_row = {
+                "user_name": audit.get(
+                    "user_name",
+                    "-"
+                ),
+                "job_title": audit.get(
+                    "job_title",
+                    "-"
+                ),
+                "opco": formatted_opco,
+                "persona": formatted_persona,
+                "query": audit.get(
+                    "query",
+                    "-"
+                ),
+                "ai_response": audit.get(
+                    "ai_response",
+                    "-"
+                ),
+                "citations": audit.get(
+                    "citations",
+                    "-"
+                ),
+                "date_and_time": formatted_timestamp,
+                "feedback_type": feedback_data[
+                    "feedback_type"
+                ],
+                "feedback_note": feedback_data[
+                    "feedback_note"
+                ]
+            }
+
+            final_results.append(
+                combined_row
+            )
+
+        # ---------------------------------------------------
+        # Return Response
+        # ---------------------------------------------------
+
+        return {
+            "count": len(final_results),
+            "limit": limit,
+            "offset": offset,
+            "filters": {
+                "start_date": start_date,
+                "end_date": end_date,
+                "user_name": user_name,
+                "persona": persona,
+                "opco": opco
+            },
+            "data": final_results
         }
 
-        send_to_tag_api(payload)
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+# ---------------------------------------------------
+# Get Unique User Names
+# ---------------------------------------------------
+
+@router.get("/users")
+async def get_unique_users(
+    cosmos_client: CosmosClient = Depends(
+        get_cosmos_client
+    ),
+):
+
+    try:
+
+        # ---------------------------------------------------
+        # Audit DB / Container
+        # ---------------------------------------------------
+
+        audit_db = cosmos_client.get_database_client(
+            "audit-table"
+        )
+
+        audit_container = audit_db.get_container_client(
+            "audit-container"
+        )
+
+        # ---------------------------------------------------
+        # Query
+        # ---------------------------------------------------
+
+        query = """
+        SELECT DISTINCT c.user_name
+        FROM c
+        WHERE IS_DEFINED(c.user_name)
+        """
+
+        users = set()
+
+        async for item in audit_container.query_items(
+            query=query
+        ):
+
+            user_name = item.get(
+                "user_name"
+            )
+
+            if (
+                user_name and
+                user_name not in EXCLUDED_USERS
+            ):
+
+                users.add(user_name)
+
+        # ---------------------------------------------------
+        # Final Sorted List
+        # ---------------------------------------------------
+
+        final_users = sorted(
+            list(users)
+        )
+
+        return {
+            "count": len(final_users),
+            "users": final_users
+        }
 
     except Exception as e:
-        print("⚠️ Failed to send tag log:", e)
 
-    return result
-
-
-# =========================
-# FASTAPI ENDPOINT
-# =========================
-@router.post("/footer-metadata")
-async def footer_metadata_endpoint(payload: dict):
-    results = []
-
-    for item in payload.get("values", []):
-        data_input = item.get("data", {})
-
-        file_name = data_input.get("metadata_storage_name", "")
-        container_name = data_input.get("metadata_storage_container", "")
-
-        print("📄 FILE:", file_name)
-        print("📦 CONTAINER:", container_name)
-
-        try:
-            data = process_document(file_name, container_name)
-        except Exception as e:
-            data = {
-                "error": str(e),
-                "isValid": False,
-                "executed": False
-            }
-
-        results.append({
-            "recordId": item["recordId"],
-            "data": data
-        })
-
-    return {"values": results}
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
