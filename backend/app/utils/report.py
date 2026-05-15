@@ -26,8 +26,7 @@ EXCLUDED_USERS = [
     "Jain, Anshuman",
     "HardCodedUser",
     "Anonymous",
-    "Test User",
-    "string"
+    "Test User"
 ]
 
 
@@ -53,7 +52,9 @@ async def combined_report(
         # Audit DB / Container
         # ---------------------------------------------------
 
-        audit_db = cosmos_client.get_database_client("audit-table")
+        audit_db = cosmos_client.get_database_client(
+            "audit-table"
+        )
 
         audit_container = audit_db.get_container_client(
             "audit-container"
@@ -267,8 +268,14 @@ async def combined_report(
                         )
                     )
 
+                    # ---------------------------------------
+                    # NEW FRIENDLY DATE FORMAT
+                    # Example:
+                    # May 15, 2026, 05:10 AM
+                    # ---------------------------------------
+
                     formatted_timestamp = parsed_time.strftime(
-                        "%Y-%m-%d %H:%M:%S UTC"
+                        "%b %d, %Y, %I:%M %p"
                     )
 
             except Exception:
