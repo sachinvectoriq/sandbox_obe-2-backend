@@ -4,7 +4,10 @@ from azure.cosmos.aio import CosmosClient
 from app.core.container import Container
 from datetime import datetime
 
-router = APIRouter(prefix="/audit-report", tags=["Audit Report"])
+router = APIRouter(
+    prefix="/audit-report",
+    tags=["Audit Report"]
+)
 
 
 # ---------------------------------------------------
@@ -12,7 +15,9 @@ router = APIRouter(prefix="/audit-report", tags=["Audit Report"])
 # ---------------------------------------------------
 
 def get_cosmos_client():
+
     container = Container()
+
     return container.cosmos_client()
 
 
@@ -31,6 +36,87 @@ EXCLUDED_USERS = [
 
 
 # ---------------------------------------------------
+# Master OPCO / Persona Values
+# ---------------------------------------------------
+
+OPCOS = [
+    "Actalent",
+    "Actalent Services",
+    "Aerotek",
+    "Aerotek Services",
+    "Aston Carter",
+    "TEKsystems",
+    "TEKsystems Global Services",
+    "Allegis Corporate Services"
+]
+
+PERSONAS = [
+    "FSG",
+    "CLS",
+    "Sales and Recruiting",
+    "Delivery and TA Services",
+    "Front Office",
+    "Back Office",
+    "Corporate Services",
+    "Talent"
+]
+
+
+# ---------------------------------------------------
+# Create Normalized Lookup Maps
+# ---------------------------------------------------
+
+def normalize_value(value: str) -> str:
+
+    return (
+        value.lower()
+        .replace(" ", "")
+        .replace("-", "")
+    )
+
+
+OPCO_LOOKUP = {
+    normalize_value(opco): opco
+    for opco in OPCOS
+}
+
+PERSONA_LOOKUP = {
+    normalize_value(persona): persona
+    for persona in PERSONAS
+}
+
+
+# ---------------------------------------------------
+# Post Processing Formatter
+# ---------------------------------------------------
+
+def format_opco(value: Optional[str]) -> str:
+
+    if not value:
+        return "-"
+
+    normalized = normalize_value(value)
+
+    return OPCO_LOOKUP.get(
+        normalized,
+        value
+    )
+
+
+def format_persona(value: Optional[str]) -> str:
+
+    if not value:
+        return "-"
+
+    normalized = normalize_value(value)
+
+    return PERSONA_LOOKUP.get(
+        normalized,
+        value
+    )
+
+
+# ---------------------------------------------------
 # Combined Audit + Feedback Report
 # ---------------------------------------------------
 
@@ -43,7 +129,9 @@ async def combined_report(
     opco: Optional[str] = None,
     limit: int = Query(100, ge=1),
     offset: int = Query(0, ge=0),
-    cosmos_client: CosmosClient = Depends(get_cosmos_client),
+    cosmos_client: CosmosClient = Depends(
+        get_cosmos_client
+    ),
 ):
 
     try:
@@ -77,6 +165,7 @@ async def combined_report(
         # ---------------------------------------------------
 
         conditions = []
+
         parameters = []
 
         # ---------------------------------------------------
@@ -84,7 +173,10 @@ async def combined_report(
         # ---------------------------------------------------
 
         excluded_users_query = ",".join(
-            [f"'{user}'" for user in EXCLUDED_USERS]
+            [
+                f"'{user}'"
+                for user in EXCLUDED_USERS
+            ]
         )
 
         conditions.append(
@@ -96,7 +188,10 @@ async def combined_report(
         # ---------------------------------------------------
 
         if user_name:
-            conditions.append("c.user_name = @user_name")
+
+            conditions.append(
+                "c.user_name = @user_name"
+            )
 
             parameters.append({
                 "name": "@user_name",
@@ -104,23 +199,40 @@ async def combined_report(
             })
 
         if persona:
-            conditions.append("c.persona = @persona")
+
+            normalized_persona = normalize_value(
+                persona
+            )
+
+            conditions.append(
+                "REPLACE(LOWER(c.persona), ' ', '') = @persona"
+            )
 
             parameters.append({
                 "name": "@persona",
-                "value": persona
+                "value": normalized_persona
             })
 
         if opco:
-            conditions.append("c.opco = @opco")
+
+            normalized_opco = normalize_value(
+                opco
+            )
+
+            conditions.append(
+                "REPLACE(LOWER(c.opco), ' ', '') = @opco"
+            )
 
             parameters.append({
                 "name": "@opco",
-                "value": opco
+                "value": normalized_opco
             })
 
         if start_date:
-            conditions.append("c.date >= @start_date")
+
+            conditions.append(
+                "c.date >= @start_date"
+            )
 
             parameters.append({
                 "name": "@start_date",
@@ -128,14 +240,19 @@ async def combined_report(
             })
 
         if end_date:
-            conditions.append("c.date <= @end_date")
+
+            conditions.append(
+                "c.date <= @end_date"
+            )
 
             parameters.append({
                 "name": "@end_date",
                 "value": end_date
             })
 
-        where_clause = " AND ".join(conditions)
+        where_clause = " AND ".join(
+            conditions
+        )
 
         # ---------------------------------------------------
         # Audit Query
@@ -268,18 +385,26 @@ async def combined_report(
                         )
                     )
 
-                    # ---------------------------------------
-                    # NEW FRIENDLY DATE FORMAT
-                    # Example:
-                    # May 15, 2026, 05:10 AM
-                    # ---------------------------------------
-
-                    formatted_timestamp = parsed_time.strftime(
-                        "%b %d, %Y, %I:%M %p"
+                    formatted_timestamp = (
+                        parsed_time.strftime(
+                            "%b %d, %Y, %I:%M %p"
+                        )
                     )
 
             except Exception:
                 pass
+
+            # ---------------------------------------------------
+            # Post Process OPCO / Persona
+            # ---------------------------------------------------
+
+            formatted_opco = format_opco(
+                audit.get("opco")
+            )
+
+            formatted_persona = format_persona(
+                audit.get("persona")
+            )
 
             # ---------------------------------------------------
             # Final Combined Row
@@ -294,14 +419,8 @@ async def combined_report(
                     "job_title",
                     "-"
                 ),
-                "opco": audit.get(
-                    "opco",
-                    "-"
-                ),
-                "persona": audit.get(
-                    "persona",
-                    "-"
-                ),
+                "opco": formatted_opco,
+                "persona": formatted_persona,
                 "query": audit.get(
                     "query",
                     "-"
@@ -323,7 +442,9 @@ async def combined_report(
                 ]
             }
 
-            final_results.append(combined_row)
+            final_results.append(
+                combined_row
+            )
 
         # ---------------------------------------------------
         # Return Response
@@ -392,7 +513,9 @@ async def get_unique_users(
             query=query
         ):
 
-            user_name = item.get("user_name")
+            user_name = item.get(
+                "user_name"
+            )
 
             if (
                 user_name and
@@ -405,7 +528,9 @@ async def get_unique_users(
         # Final Sorted List
         # ---------------------------------------------------
 
-        final_users = sorted(list(users))
+        final_users = sorted(
+            list(users)
+        )
 
         return {
             "count": len(final_users),
