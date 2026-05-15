@@ -7,18 +7,18 @@ from datetime import datetime
 router = APIRouter(prefix="/audit-report", tags=["Audit Report"])
 
 
-# -----------------------------------
+# ---------------------------------------------------
 # Dependency
-# -----------------------------------
+# ---------------------------------------------------
 
 def get_cosmos_client():
     container = Container()
     return container.cosmos_client()
 
 
-# -----------------------------------
+# ---------------------------------------------------
 # Excluded Users
-# -----------------------------------
+# ---------------------------------------------------
 
 EXCLUDED_USERS = [
     "Bhaskar, Solomon",
@@ -29,9 +29,9 @@ EXCLUDED_USERS = [
 ]
 
 
-# -----------------------------------
+# ---------------------------------------------------
 # Combined Audit + Feedback Report
-# -----------------------------------
+# ---------------------------------------------------
 
 @router.get("/combined-report")
 async def combined_report(
@@ -47,26 +47,30 @@ async def combined_report(
 
     try:
 
-        # -----------------------------------
-        # Audit Container
-        # -----------------------------------
+        # ---------------------------------------------------
+        # Audit DB / Container
+        # ---------------------------------------------------
 
         audit_db = cosmos_client.get_database_client("audit-table")
         audit_container = audit_db.get_container_client("audit-container")
 
-        # -----------------------------------
-        # Feedback Container
-        # -----------------------------------
+        # ---------------------------------------------------
+        # Feedback DB / Container
+        # ---------------------------------------------------
 
         feedback_db = cosmos_client.get_database_client("feedback-table")
-        feedback_container = feedback_db.get_container_client("feedback-container")
+        feedback_container = feedback_db.get_container_client(
+            "feedback-container"
+        )
 
-        # -----------------------------------
+        # ---------------------------------------------------
         # Build Audit Query
-        # -----------------------------------
+        # ---------------------------------------------------
 
         conditions = []
         parameters = []
+
+        # Excluded Users
 
         excluded_users_query = ",".join(
             [f"'{user}'" for user in EXCLUDED_USERS]
@@ -75,6 +79,8 @@ async def combined_report(
         conditions.append(
             f"c.user_name NOT IN ({excluded_users_query})"
         )
+
+        # Optional Filters
 
         if user_name:
             conditions.append("c.user_name = @user_name")
@@ -113,6 +119,10 @@ async def combined_report(
 
         where_clause = " AND ".join(conditions)
 
+        # ---------------------------------------------------
+        # Audit Query
+        # ---------------------------------------------------
+
         audit_query = f"""
         SELECT
             c.id,
@@ -129,26 +139,25 @@ async def combined_report(
             c.citations
         FROM c
         WHERE {where_clause}
-        ORDER BY c.timestamp_utc DESC
+        ORDER BY c._ts DESC
         OFFSET {offset} LIMIT {limit}
         """
 
-        # -----------------------------------
-        # Fetch Audit Data
-        # -----------------------------------
+        # ---------------------------------------------------
+        # Fetch Audit Records
+        # ---------------------------------------------------
 
         audit_items = []
 
         async for item in audit_container.query_items(
             query=audit_query,
-            parameters=parameters,
-            enable_cross_partition_query=True
+            parameters=parameters
         ):
             audit_items.append(item)
 
-        # -----------------------------------
-        # Fetch Feedback Data
-        # -----------------------------------
+        # ---------------------------------------------------
+        # Feedback Query
+        # ---------------------------------------------------
 
         feedback_query = """
         SELECT
@@ -161,17 +170,20 @@ async def combined_report(
         WHERE c.record_type = 'feedback'
         """
 
+        # ---------------------------------------------------
+        # Fetch Feedback Records
+        # ---------------------------------------------------
+
         feedback_items = []
 
         async for item in feedback_container.query_items(
-            query=feedback_query,
-            enable_cross_partition_query=True
+            query=feedback_query
         ):
             feedback_items.append(item)
 
-        # -----------------------------------
-        # Create Feedback Lookup Dictionary
-        # -----------------------------------
+        # ---------------------------------------------------
+        # Create Feedback Lookup
+        # ---------------------------------------------------
 
         feedback_lookup = {}
 
@@ -188,9 +200,9 @@ async def combined_report(
                 "feedback_note": fb.get("feedback_note", "-")
             }
 
-        # -----------------------------------
+        # ---------------------------------------------------
         # Merge Audit + Feedback
-        # -----------------------------------
+        # ---------------------------------------------------
 
         final_results = []
 
@@ -210,14 +222,16 @@ async def combined_report(
                 }
             )
 
-            # -----------------------------------
-            # Format Timestamp
-            # -----------------------------------
+            # ---------------------------------------------------
+            # Format Timestamp Properly
+            # ---------------------------------------------------
 
-            formatted_timestamp = audit.get("timestamp_utc")
+            formatted_timestamp = audit.get("timestamp_utc", "-")
 
             try:
+
                 if formatted_timestamp:
+
                     parsed_time = datetime.fromisoformat(
                         formatted_timestamp.replace("Z", "+00:00")
                     )
@@ -229,24 +243,28 @@ async def combined_report(
             except Exception:
                 pass
 
-            # -----------------------------------
+            # ---------------------------------------------------
             # Final Combined Row
-            # -----------------------------------
+            # ---------------------------------------------------
 
             combined_row = {
-                "user_name": audit.get("user_name"),
-                "job_title": audit.get("job_title"),
-                "opco": audit.get("opco"),
-                "persona": audit.get("persona"),
-                "query": audit.get("query"),
-                "ai_response": audit.get("ai_response"),
-                "citations": audit.get("citations"),
+                "user_name": audit.get("user_name", "-"),
+                "job_title": audit.get("job_title", "-"),
+                "opco": audit.get("opco", "-"),
+                "persona": audit.get("persona", "-"),
+                "query": audit.get("query", "-"),
+                "ai_response": audit.get("ai_response", "-"),
+                "citations": audit.get("citations", "-"),
                 "date_and_time": formatted_timestamp,
                 "feedback_type": feedback_data["feedback_type"],
                 "feedback_note": feedback_data["feedback_note"]
             }
 
             final_results.append(combined_row)
+
+        # ---------------------------------------------------
+        # Return Response
+        # ---------------------------------------------------
 
         return {
             "count": len(final_results),
@@ -263,4 +281,7 @@ async def combined_report(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
