@@ -1,8 +1,8 @@
 """
 Report Access API
 
-Handles inserting and fetching report access logs
-from Cosmos DB.
+Handles inserting, fetching, and deleting
+report access logs from Cosmos DB.
 """
 
 import uuid
@@ -20,13 +20,18 @@ router = APIRouter(prefix="/report-access")
 
 
 # ---------------------------
-# Request Model
+# Request Models
 # ---------------------------
 
 class ReportAccessRequest(BaseModel):
     user_mail: str
     user_name: str
     provider_name: str
+
+
+class DeleteReportAccessRequest(BaseModel):
+    user_mail: str
+    user_name: str
 
 
 # ---------------------------
@@ -83,12 +88,69 @@ async def get_all_report_access(
         query = "SELECT * FROM c WHERE c.record_type = 'report_access'"
 
         items = []
-        async for item in container.query_items(query=query):
+        async for item in container.query_items(
+            query=query,
+            enable_cross_partition_query=True
+        ):
             items.append(item)
 
         return {
             "count": len(items),
             "data": items
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------
+# 3️⃣ Delete Record
+# ---------------------------
+
+@router.delete("/delete")
+async def delete_report_access(
+    request: DeleteReportAccessRequest,
+    cosmos_client: CosmosClient = Depends(get_cosmos_client),
+):
+    try:
+        db = cosmos_client.get_database_client("report-access-table")
+        container = db.get_container_client("report-access-container")
+
+        query = """
+        SELECT * FROM c
+        WHERE c.user_mail = @user_mail
+        AND c.user_name = @user_name
+        AND c.record_type = 'report_access'
+        """
+
+        parameters = [
+            {"name": "@user_mail", "value": request.user_mail},
+            {"name": "@user_name", "value": request.user_name},
+        ]
+
+        items = []
+        async for item in container.query_items(
+            query=query,
+            parameters=parameters,
+            enable_cross_partition_query=True
+        ):
+            items.append(item)
+
+        if not items:
+            raise HTTPException(
+                status_code=404,
+                detail="No matching record found"
+            )
+
+        for item in items:
+            await container.delete_item(
+                item=item["id"],
+                partition_key=item["user_mail"]
+            )
+
+        return {
+            "message": "Report access record(s) deleted successfully",
+            "deleted_count": len(items)
         }
 
     except Exception as e:
