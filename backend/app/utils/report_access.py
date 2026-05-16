@@ -88,10 +88,8 @@ async def get_all_report_access(
         query = "SELECT * FROM c WHERE c.record_type = 'report_access'"
 
         items = []
-        async for item in container.query_items(
-            query=query,
-            enable_cross_partition_query=True
-        ):
+
+        async for item in container.query_items(query=query):
             items.append(item)
 
         return {
@@ -129,10 +127,10 @@ async def delete_report_access(
         ]
 
         items = []
+
         async for item in container.query_items(
             query=query,
-            parameters=parameters,
-            enable_cross_partition_query=True
+            parameters=parameters
         ):
             items.append(item)
 
